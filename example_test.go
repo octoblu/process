@@ -4,10 +4,10 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/nightlyone/process"
+	"github.com/octoblu/process"
 )
 
-func Example_Background() {
+func ExampleBackground() {
 	cmd := exec.Command("true")
 	group, err := process.Background(cmd)
 	if err != nil {
