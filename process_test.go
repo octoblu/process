@@ -101,6 +101,54 @@ func TestExitBeforeKill(t *testing.T) {
 	}
 }
 
+func TestWaitOnProgramExitClean(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command("true")
+	g, err := Background(cmd)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
+	}
+
+	err = g.Wait()
+	want := 0
+	if got := getExitCode(err); got != want {
+		t.Fatalf("expected error code %d, but got %d, because %v", want, got, err)
+	}
+}
+
+func TestWaitOnProgramExitDirty(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command("false")
+	g, err := Background(cmd)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
+	}
+
+	err = g.Wait()
+	want := 1
+	if got := getExitCode(err); got != want {
+		t.Fatalf("expected error code %d, but got %d, because %v", want, got, err)
+	}
+}
+
+func TestWaitOnSoftKill(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command("sleep", "2")
+	g, err := Background(cmd)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
+	}
+
+	go func() {
+		g.Terminate(time.Hour * 500)
+	}()
+	err = g.Wait()
+	wantErr := errors.New("signal: terminated")
+	if err == nil || err.Error() != wantErr.Error() {
+		t.Fatalf("got '%v', expected error '%v'", err, wantErr)
+	}
+}
+
 func getExitCode(err error) int {
 	if err == nil {
 		return 0
@@ -114,5 +162,4 @@ func getExitCode(err error) int {
 		return -2
 	}
 	return status.ExitStatus()
-
 }

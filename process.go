@@ -17,8 +17,10 @@ var errUnimplemented = errors.New("process: function not implemented")
 
 // Group is a process group we manage.
 type Group struct {
-	pid   int
-	waitc <-chan error
+	pid                int
+	onExitForTerminate <-chan error
+	onExitForWait      <-chan error
+	onExitMux          <-chan error
 }
 
 // Background runs a command which can fork other commands (e.g. a shell script) building a tree of processes.
@@ -33,7 +35,9 @@ func Background(cmd *exec.Cmd) (*Group, error) {
 	}
 
 	startc := make(chan startResult)
-	waitc := make(chan error, 1)
+	onExitMux := make(chan error, 1)
+	onExitForTerminate := make(chan error, 1)
+	onExitForWait := make(chan error, 1)
 
 	// NOTE: Cannot setsid and and setpgid in one child. Would need double fork or exec,
 	// which makes things very hard.
@@ -48,7 +52,10 @@ func Background(cmd *exec.Cmd) (*Group, error) {
 	cmd.SysProcAttr.Setpgid = true
 
 	// Try to start process
-	go startProcess(cmd, startc, waitc)
+	go startProcess(cmd, startc, onExitMux)
+	// Start muxing the onExit
+	go muxOnExit(onExitMux, onExitForTerminate, onExitForWait)
+
 	res := <-startc
 
 	if res.err != nil {
@@ -57,8 +64,9 @@ func Background(cmd *exec.Cmd) (*Group, error) {
 
 	// Now running in the background
 	return &Group{
-		pid:   res.pid,
-		waitc: waitc,
+		pid:                res.pid,
+		onExitForTerminate: onExitForTerminate,
+		onExitForWait:      onExitForWait,
 	}, nil
 }
 
@@ -67,7 +75,7 @@ var ErrNotLeader = errors.New("process is not process group leader")
 
 // Signal sends POSIX signal sig to this process group
 func (g *Group) Signal(sig os.Signal) error {
-	if g == nil || g.waitc == nil {
+	if g == nil || g.onExitForTerminate == nil {
 		return syscall.ESRCH
 	}
 	if leader, err := g.isLeader(); err != nil {
@@ -88,10 +96,10 @@ func (g *Group) Terminate(patience time.Duration) error {
 
 	// did we exit in the meantime?
 	select {
-	case errWait, opened := <-g.waitc:
+	case errWait, opened := <-g.onExitForTerminate:
 		if opened {
-			<-g.waitc
-			g.waitc = nil
+			<-g.onExitForTerminate
+			g.onExitForTerminate = nil
 			return errWait
 		}
 	default:
@@ -104,10 +112,10 @@ func (g *Group) Terminate(patience time.Duration) error {
 
 	// wait at most patience time for exit
 	select {
-	case _, opened := <-g.waitc:
+	case _, opened := <-g.onExitForTerminate:
 		if opened {
-			<-g.waitc
-			g.waitc = nil
+			<-g.onExitForTerminate
+			g.onExitForTerminate = nil
 			terminated = true
 		}
 	case <-time.After(patience):
@@ -124,11 +132,16 @@ func (g *Group) Terminate(patience time.Duration) error {
 	}
 
 	// But we need to wait on the result now
-	<-g.waitc
-	<-g.waitc
-	g.waitc = nil
+	<-g.onExitForTerminate
+	<-g.onExitForTerminate
+	g.onExitForTerminate = nil
 	return nil
+}
 
+// Wait blocks until the backgrounded process has died, then returns
+// the error as if from cmd.Wait()
+func (g *Group) Wait() error {
+	return <-g.onExitForWait
 }
 
 // isLeader determines, whether g is still the leader of the process group
@@ -153,6 +166,21 @@ func (g *Group) isLeader() (ok bool, err error) {
 	return true, nil
 }
 
+func muxOnExit(onExit chan error, otherOnExits ...chan error) {
+	for err, open := <-onExit; open; {
+		for _, otherOnExit := range otherOnExits {
+			select {
+			case otherOnExit <- err:
+			default:
+			}
+		}
+	}
+
+	for _, otherOnExit := range otherOnExits {
+		close(otherOnExit)
+	}
+}
+
 type startResult struct {
 	pid int
 	err error
@@ -173,6 +201,8 @@ func startProcess(cmd *exec.Cmd, startc chan<- startResult, waitc chan<- error) 
 	close(startc)
 
 	// No wait until we finish or get killed
-	waitc <- cmd.Wait()
+	err := cmd.Wait()
+	waitc <- err
+
 	close(waitc)
 }
