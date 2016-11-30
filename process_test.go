@@ -82,9 +82,8 @@ func TestExitBeforeKill(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	err = g.Terminate(500 * time.Millisecond)
 
-	want := 1
-	if got := getExitCode(err); got != want {
-		t.Fatalf("expected error code %d, but got %d, because %v", want, got, err)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
 	}
 }
 
@@ -137,6 +136,25 @@ func TestWaitOnSoftKill(t *testing.T) {
 
 	if _, isExitError := err.(*exec.ExitError); !isExitError {
 		t.Fatalf("got '%v', expected error to be ExitError", err)
+	}
+}
+
+func TestDoubleTerminate(t *testing.T) {
+	t.Parallel()
+	cmd := exec.Command("sleep", "10")
+	g, err := Background(cmd)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
+	}
+
+	err = g.Terminate(time.Second * 10)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
+	}
+
+	err = g.Terminate(time.Second * 10)
+	if err != nil {
+		t.Fatalf("got unexpected error %v", err)
 	}
 }
 

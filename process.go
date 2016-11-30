@@ -78,16 +78,16 @@ func (g *Group) Signal(sig os.Signal) error {
 
 // Terminate first tries to gracefully terminate the process, waits patience time, then does final termination and waits for it to exit.
 func (g *Group) Terminate(patience time.Duration) error {
-	var terminated bool
+	// did we Terminate previously?
+	if g.onExitForTerminate == nil {
+		return nil
+	}
 
-	// did we exit in the meantime?
+	// did we exit outside of a Terminate call?
 	select {
-	case errWait, opened := <-g.onExitForTerminate:
-		if opened {
-			<-g.onExitForTerminate
-			g.onExitForTerminate = nil
-			return errWait
-		}
+	case <-g.onExitForTerminate:
+		g.onExitForTerminate = nil
+		return nil
 	default:
 	}
 
@@ -98,18 +98,10 @@ func (g *Group) Terminate(patience time.Duration) error {
 
 	// wait at most patience time for exit
 	select {
-	case _, opened := <-g.onExitForTerminate:
-		if opened {
-			<-g.onExitForTerminate
-			g.onExitForTerminate = nil
-			terminated = true
-		}
-	case <-time.After(patience):
-	}
-
-	// exited gracefully
-	if terminated {
+	case <-g.onExitForTerminate:
+		g.onExitForTerminate = nil
 		return nil
+	case <-time.After(patience):
 	}
 
 	// do it the hard way
