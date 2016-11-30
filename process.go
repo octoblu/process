@@ -1,5 +1,3 @@
-//+build !windows,!plan9
-
 // Package process manages the lifecyle of processes and process groups
 package process
 
