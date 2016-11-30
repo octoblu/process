@@ -40,9 +40,9 @@ func TestSetsidConflictFails(t *testing.T) {
 	cmd := exec.Command(what)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	_, err := Background(cmd)
-	wantErr := errors.New("May not be used with a cmd.SysProcAttr.Setsid = true")
+	wantErr := errors.New("May not be used with a SysProcAttr.Setsid = true")
 	if err == nil || err.Error() != wantErr.Error() {
-		t.Fatalf("got %v, expected error %v", err, wantErr)
+		t.Fatalf("got '%v', expected error '%v'", err, wantErr)
 	}
 }
 

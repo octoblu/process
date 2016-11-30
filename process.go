@@ -1,3 +1,5 @@
+//+build !plan9
+
 // Package process manages the lifecyle of processes and process groups
 package process
 
@@ -37,17 +39,11 @@ func Background(cmd *exec.Cmd) (*Group, error) {
 	onExitForTerminate := make(chan error, 1)
 	onExitForWait := make(chan error, 1)
 
-	// NOTE: Cannot setsid and and setpgid in one child. Would need double fork or exec,
-	// which makes things very hard.
-	if cmd.SysProcAttr != nil && cmd.SysProcAttr.Setsid {
-		return nil, fmt.Errorf("May not be used with a cmd.SysProcAttr.Setsid = true")
+	sysProcAttr, err := ensureSysProcAttr(cmd.SysProcAttr)
+	if err != nil {
+		return nil, err
 	}
-
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-
-	cmd.SysProcAttr.Setpgid = true
+	cmd.SysProcAttr = sysProcAttr
 
 	// Try to start process
 	go startProcess(cmd, startc, onExitMux)
