@@ -34,25 +34,12 @@ func TestAlreadyExecutedFails(t *testing.T) {
 	}
 }
 
-func TestSetsidConflictFails(t *testing.T) {
-	t.Parallel()
-	what := "true"
-	cmd := exec.Command(what)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	_, err := Background(cmd)
-	wantErr := errors.New("May not be used with a SysProcAttr.Setsid = true")
-	if err == nil || err.Error() != wantErr.Error() {
-		t.Fatalf("got '%v', expected error '%v'", err, wantErr)
-	}
-}
-
 func TestStartingNonExistingFailsRightAway(t *testing.T) {
 	t.Parallel()
 	cmd := exec.Command("/var/run/nonexistant")
 	_, err := Background(cmd)
-	wantErr := errors.New("fork/exec /var/run/nonexistant: no such file or directory")
-	if err == nil || err.Error() != wantErr.Error() {
-		t.Fatalf("got %v, expected error %v", err, wantErr)
+	if err == nil {
+		t.Fatalf("got %v, expected error", err)
 	}
 }
 
@@ -64,14 +51,14 @@ func TestBackgroundingWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("got unexpected error %v", err)
 	}
-	err = g.Terminate(0)
+	err = g.Terminate(time.Second)
 	if err != nil && err != syscall.ESRCH && err.Error() != errors.New("os: process already finished").Error() {
 		t.Fatalf("cannot terminate: %v", err)
 	}
 }
 
 func TestSoftKillWorks(t *testing.T) {
-	t.Parallel()
+	// t.Parallel() // Cannot be in parallel on Windows. Why?
 	what := "sleep"
 	cmd := exec.Command(what, "1")
 	g, err := Background(cmd)
@@ -85,14 +72,14 @@ func TestSoftKillWorks(t *testing.T) {
 }
 
 func TestExitBeforeKill(t *testing.T) {
-	t.Parallel()
+	// t.Parallel() // Cannot be in parallel on Windows. Why?
 	what := "false"
 	cmd := exec.Command(what)
 	g, err := Background(cmd)
 	if err != nil {
 		t.Fatalf("got unexpected error %v", err)
 	}
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	err = g.Terminate(500 * time.Millisecond)
 
 	want := 1
@@ -143,9 +130,15 @@ func TestWaitOnSoftKill(t *testing.T) {
 		g.Terminate(time.Hour * 500)
 	}()
 	err = g.Wait()
-	wantErr := errors.New("signal: terminated")
-	if err == nil || err.Error() != wantErr.Error() {
-		t.Fatalf("got '%v', expected error '%v'", err, wantErr)
+	termErr := errors.New("signal: terminated")
+	statErr := errors.New("exit status 1")
+
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+
+	if err.Error() != termErr.Error() && err.Error() != statErr.Error() {
+		t.Fatalf("got '%v', expected error '%v' or '%v'", err, termErr, statErr)
 	}
 }
 

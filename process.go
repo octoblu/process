@@ -39,12 +39,6 @@ func Background(cmd *exec.Cmd) (*Group, error) {
 	onExitForTerminate := make(chan error, 1)
 	onExitForWait := make(chan error, 1)
 
-	sysProcAttr, err := ensureSysProcAttr(cmd.SysProcAttr)
-	if err != nil {
-		return nil, err
-	}
-	cmd.SysProcAttr = sysProcAttr
-
 	// Try to start process
 	go startProcess(cmd, startc, onExitMux)
 	// Start muxing the onExit
@@ -72,15 +66,13 @@ func (g *Group) Signal(sig os.Signal) error {
 	if g == nil || g.onExitForTerminate == nil {
 		return syscall.ESRCH
 	}
-	if leader, err := g.isLeader(); err != nil {
-		return err
-	} else if !leader {
-		return ErrNotLeader
-	}
 
 	// This just creates a process object from a Pid in Unix
 	// instead of actually searching it.
-	grp, _ := os.FindProcess(-g.pid)
+	grp, _ := os.FindProcess(g.pid)
+	if grp == nil {
+		return fmt.Errorf("could not find process for", g.pid)
+	}
 	return grp.Signal(sig)
 }
 
@@ -100,7 +92,7 @@ func (g *Group) Terminate(patience time.Duration) error {
 	}
 
 	// try to be soft
-	if err := g.Signal(syscall.SIGTERM); err != nil {
+	if err := g.Signal(softSignal()); err != nil {
 		return err
 	}
 
@@ -127,7 +119,6 @@ func (g *Group) Terminate(patience time.Duration) error {
 
 	// But we need to wait on the result now
 	<-g.onExitForTerminate
-	<-g.onExitForTerminate
 	g.onExitForTerminate = nil
 	return nil
 }
@@ -136,28 +127,6 @@ func (g *Group) Terminate(patience time.Duration) error {
 // the error as if from cmd.Wait()
 func (g *Group) Wait() error {
 	return <-g.onExitForWait
-}
-
-// isLeader determines, whether g is still the leader of the process group
-func (g *Group) isLeader() (ok bool, err error) {
-	if g == nil {
-		return false, syscall.ESRCH
-	}
-	pgid, err := syscall.Getpgid(g.pid)
-	if err != nil {
-		return false, err
-	}
-
-	// Pids 0 and 1 will have special meaning, so don't return them.
-	if pgid < 2 {
-		return false, nil
-	}
-
-	// the process is not the leader?
-	if pgid != g.pid {
-		return false, nil
-	}
-	return true, nil
 }
 
 func muxOnExit(onExit chan error, otherOnExits ...chan error) {

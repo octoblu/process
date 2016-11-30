@@ -2,10 +2,8 @@ package process
 
 import "syscall"
 
-func ensureSysProcAttr(sysProcAttr *syscall.SysProcAttr) (*syscall.SysProcAttr, error) {
-	if sysProcAttr != nil {
-		return sysProcAttr, nil
-	}
-
-	return &syscall.SysProcAttr{}, nil
+// softSignal returns this operating system's expected
+// quit signal
+func softSignal() syscall.Signal {
+	return syscall.SIGKILL
 }
