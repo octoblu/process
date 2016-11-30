@@ -120,25 +120,23 @@ func TestWaitOnProgramExitDirty(t *testing.T) {
 
 func TestWaitOnSoftKill(t *testing.T) {
 	t.Parallel()
-	cmd := exec.Command("sleep", "2")
+	cmd := exec.Command("sleep", "10")
 	g, err := Background(cmd)
 	if err != nil {
 		t.Fatalf("got unexpected error %v", err)
 	}
 
 	go func() {
-		g.Terminate(time.Hour * 500)
+		g.Terminate(time.Second * 10)
 	}()
 	err = g.Wait()
-	termErr := errors.New("signal: terminated")
-	statErr := errors.New("exit status 1")
 
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
 
-	if err.Error() != termErr.Error() && err.Error() != statErr.Error() {
-		t.Fatalf("got '%v', expected error '%v' or '%v'", err, termErr, statErr)
+	if _, isExitError := err.(*exec.ExitError); !isExitError {
+		t.Fatalf("got '%v', expected error to be ExitError", err)
 	}
 }
 

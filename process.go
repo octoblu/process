@@ -130,7 +130,7 @@ func (g *Group) Wait() error {
 }
 
 func muxOnExit(onExit chan error, otherOnExits ...chan error) {
-	for err, open := <-onExit; open; {
+	for err := range onExit {
 		for _, otherOnExit := range otherOnExits {
 			select {
 			case otherOnExit <- err:
