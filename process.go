@@ -69,12 +69,10 @@ func (g *Group) Signal(sig os.Signal) error {
 
 	// This just creates a process object from a Pid in Unix
 	// instead of actually searching it.
-	fmt.Println("searching for:", g.pid)
 	grp, _ := os.FindProcess(g.pid)
 	if grp == nil {
 		return fmt.Errorf("could not find process for", g.pid)
 	}
-	fmt.Println("sending kill to:", g.pid)
 	return grp.Signal(sig)
 }
 
